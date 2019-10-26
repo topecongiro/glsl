@@ -82,6 +82,14 @@ pub fn identifier(i: &str) -> ParserResult<syntax::Identifier> {
   map(string, syntax::Identifier)(i)
 }
 
+/// Parse a preprocessor raw content.
+///
+/// This is akin to [`string`] but doesn’t perform any check on the characters. What it does is
+/// basically construct a [`String`] as long as we don’t hit the end of the input or a newline.
+pub fn pp_raw_str(i: &str) -> ParserResult<String> {
+  map(take_until("\n"), String::from)(i)
+}
+
 /// Parse a type name.
 pub fn type_name(i: &str) -> ParserResult<syntax::TypeName> {
   map(string, syntax::TypeName)(i)
@@ -1647,22 +1655,22 @@ pub fn pp_define(i: &str) -> ParserResult<syntax::PreprocessorDefine> {
       terminated(char('#'), space0),
       terminated(keyword("define"), space0),
       terminated(identifier, space0),
-      terminated(primary_expr, space0),
+      terminated(pp_raw_str, space0),
       newline,
     )),
-    |(_, _, name, value, _)| syntax::PreprocessorDefine { name, value },
+    |(_, _, ident, value, _)| syntax::PreprocessorDefine { ident, value },
   )(i)
 }
 
 /// Parse a #else.
 pub fn pp_else(i: &str) -> ParserResult<syntax::Preprocessor> {
-  map(
+  value(
+    syntax::Preprocessor::Else,
     tuple((
       terminated(char('#'), space0),
       terminated(keyword("else"), space0),
       newline,
     )),
-    |(_, _, _)| syntax::Preprocessor::Else,
   )(i)
 }
 
@@ -1672,10 +1680,10 @@ pub fn pp_elseif(i: &str) -> ParserResult<syntax::PreprocessorElseIf> {
     tuple((
       terminated(char('#'), space0),
       terminated(keyword("elseif"), space0),
-      terminated(primary_expr, space0),
+      terminated(pp_raw_str, space0),
       newline,
     )),
-    |(_, _, expr, _)| syntax::PreprocessorElseIf { expr },
+    |(_, _, condition, _)| syntax::PreprocessorElseIf { condition },
   )(i)
 }
 
@@ -1712,10 +1720,10 @@ pub fn pp_if(i: &str) -> ParserResult<syntax::PreprocessorIf> {
     tuple((
       terminated(char('#'), space0),
       terminated(keyword("if"), space0),
-      terminated(primary_expr, space0),
+      terminated(pp_raw_str, space0),
       newline,
     )),
-    |(_, _, expr, _)| syntax::PreprocessorIf { expr },
+    |(_, _, condition, _)| syntax::PreprocessorIf { condition },
   )(i)
 }
 
@@ -1728,7 +1736,7 @@ pub fn pp_ifdef(i: &str) -> ParserResult<syntax::PreprocessorIfDef> {
       terminated(identifier, space0),
       newline,
     )),
-    |(_, _, name, _)| syntax::PreprocessorIfDef { name },
+    |(_, _, ident, _)| syntax::PreprocessorIfDef { ident },
   )(i)
 }
 
@@ -1741,7 +1749,7 @@ pub fn pp_ifndef(i: &str) -> ParserResult<syntax::PreprocessorIfNDef> {
       terminated(identifier, space0),
       newline,
     )),
-    |(_, _, name, _)| syntax::PreprocessorIfNDef { name },
+    |(_, _, ident, _)| syntax::PreprocessorIfNDef { ident },
   )(i)
 }
 
@@ -1769,8 +1777,8 @@ pub fn pp_line(i: &str) -> ParserResult<syntax::PreprocessorLine> {
       newline,
     )),
     |(_, _, line, source_string_number, _)| syntax::PreprocessorLine {
-      line,
-      source_string_number,
+      line: line as u32,
+      source_string_number: source_string_number.map(|n| n as u32),
     },
   )(i)
 }
@@ -4271,8 +4279,8 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::Define(syntax::PreprocessorDefine {
-          name: "test".into(),
-          value: syntax::Expr::DoubleConst(1.0)
+          ident: "test".into(),
+          value: "1.0".to_owned()
         })
       ))
     );
@@ -4282,8 +4290,8 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::Define(syntax::PreprocessorDefine {
-          name: "test123".into(),
-          value: syntax::Expr::FloatConst(0.0)
+          ident: "test123".into(),
+          value: ".0f".to_owned()
         })
       ))
     );
@@ -4293,8 +4301,8 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::Define(syntax::PreprocessorDefine {
-          name: "test".into(),
-          value: syntax::Expr::IntConst(1)
+          ident: "test".into(),
+          value: "1".to_owned()
         })
       ))
     );
@@ -4315,7 +4323,7 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::ElseIf(syntax::PreprocessorElseIf {
-          expr: syntax::Expr::IntConst(42)
+          condition: "42".to_owned()
         })
       ))
     );
@@ -4349,7 +4357,7 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::If(syntax::PreprocessorIf {
-          expr: syntax::Expr::IntConst(42)
+          condition: "42".to_owned()
         })
       ))
     );
@@ -4362,7 +4370,7 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::IfDef(syntax::PreprocessorIfDef {
-          name: syntax::Identifier("FOO".to_owned())
+          ident: syntax::Identifier("FOO".to_owned())
         })
       ))
     );
@@ -4375,7 +4383,7 @@ mod tests {
       Ok((
         "",
         syntax::Preprocessor::IfNDef(syntax::PreprocessorIfNDef {
-          name: syntax::Identifier("FOO".to_owned())
+          ident: syntax::Identifier("FOO".to_owned())
         })
       ))
     );
