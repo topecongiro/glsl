@@ -1,6 +1,6 @@
 # 3.0
 
-> Sat 26th Oct 2019
+> Sun 27th Oct 2019
 
 ## Major changes
 
